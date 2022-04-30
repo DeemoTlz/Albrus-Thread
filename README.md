@@ -256,7 +256,7 @@ public ReentrantLock(boolean fair) {
 
 可重入锁、递归锁。
 
-`synchroinzed & Lock` 都是可重入锁。
+`synchroinzed & ReentrantLock & ReentrantReadWriteLock` 都是可重入锁。
 
 ### 4.4 死锁
 
@@ -419,7 +419,11 @@ for (int i = 0; i < 6; i++) {
 
 ### 7.1 ReentrantReadWriteLock
 
-`ReentrantReadWriteLock`：读共享，写独占，支持**==锁降级（同一个线程获取到写锁时也可以获取读锁）==**
+> - 读共享
+> - 写独占
+> - 支持**==锁降级（同一个线程获取到写锁时也可以获取读锁）==**
+> - **读写锁均可重入**
+> - `ReadLock` 不支持 Condition：`java.lang.UnsupportedOperationException`
 
 ```java
 // 读锁
@@ -472,7 +476,12 @@ public void test() {
 
 ### 7.3 StampedLock
 
-乐观锁、支持锁升级、锁降级==**（同一个线程获取到写锁时，不能直接再获取读锁）**==
+> 写锁、悲观读锁、乐观读（不是乐观读锁，==**乐观读是无锁的**==）
+>
+> - 不支持直接锁升级、锁降级==**（同一个线程获取到写锁时，不能直接再获取读锁）**==，可通过 `tryConvertToReadLock & tryConvertToWriteLock` 降级或升级锁
+> - **==写锁不可重入==**，悲观读锁可重入
+> - 不支持 Condition
+> - 具体使用时可参考JDK源码中的示例
 
 ```java
 /**
@@ -580,6 +589,14 @@ public long tryConvertToReadLock(long stamp) {
     return 0L;
 }
 ```
+
+一般使用乐观读的时候，先是获取乐观读，再执行业务，再判断乐观读之后的时间里是否有写操作 `validate`，如果有则升级为悲观读锁。**这里是升级为悲观读锁而不是循环执行乐观读，感觉是避免循环读浪费CPU**？但是本来就是写少读多？可能是如果某一时间点写较多，读的请求将一直被循环阻塞。一般建议便是使用该流程模板来使用乐观读。
+
+理解这个乐观读可用对比数据库的乐观锁（版本号：`UPDATE x set version = version + 1 WHERE xxxx AND version = #{version};`）。这里的乐观读也是会生成一个 `stamp`，与数据库中的 `version` 有异曲同工之妙。
+
+另外注意：==**如果线程阻塞在 `StampedLock.readLock() || StampedLock.writeLock()` 时调用该线程的 `interrupt()` 方法，将导致CPU飙升。**==所以如果需要支持中断操作，一定使用可终端的悲观读锁和写锁（`readLockInterruptibly & writeLockInterruptibly`）。
+
+`StampedLock` 性能相比 `ReadWriteLock` 性能更好的原因是：前者支持乐观读。原理便是从实际业务出发认定业务系统中，某一部分数据的操作是读多写少，因此没必要每次读的时候都去消耗时间加读锁和释放读锁。于是在读取数据时，便从读取数据前记录一个 `stamp` （与数据库的 `version` 异曲同工之妙），假设没有人来写数据，在操作完之后便验证一次是否真的没人来写数据，如果真的没有便返回，如果有则升级为悲观读锁处理。**相比之下，性能提升的便是将每次的读锁处理优化为操作数据时是否有人来写过数据，是一个无锁操作。**
 
 ## 八、阻塞队列 - BlockingQueue
 
