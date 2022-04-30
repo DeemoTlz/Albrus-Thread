@@ -382,7 +382,172 @@ for (int i = 0; i < 7; i++) {
 }
 ```
 
-### 6.3 Semaphore
+### 6.3 小总结
+
+> 阻塞操作，建议设置超时时间。
+
+前两个辅助类怎么理解它的实用性呢？
+
+列举一个场景：**用户下单为订单库，物流派单为派单库，为防止出现漏发错发的问题，需要每天进行订单库和派单库对账。**
+
+1. 方案一：串行处理
+
+   ```java
+   while (存在未对账的订单) {
+       // 查询未对账订单
+       pos = getPOrders();
+       // 查询派送单
+       dos = getDOrders();
+       // 对账
+       diff = check(pos, dos);
+       // 差异写库
+       save(diff);
+   }
+   ```
+
+   存在的问题：由于订单量和派单量数量都很大，查询效率很低，导致对账很慢。![image-20220430182140674](images/image-20220430182140674.png)
+
+2. 方案二：多线程粗粗步拆解
+
+   对方案一进行分析，瓶颈在于查询未对账订单和查询派送单两个操作，那么能不能把这两个操作改为并行处理行不行呢？答案是可以的，因为这两个操作没有先后依赖关系。将这两个操作拆分为并行后，执行效果如图：![image-20220430182513033](images/image-20220430182513033.png)
+
+   可以发现，相同的等待时间内，并行执行的吞吐量近乎单线程的2倍。
+
+   所优化的点：两个耗时查询并行查询，在忽略线程切换等环节带来的耗时时，并行执行节省了一次订单查询时间（节省相对较短的查询时间），也就是说只需要等待一次最长的查询时间即可。
+
+   思路有了，接下来代码实现。新开两个线程T1 T2分别查询两种订单，线程T3便执行对账和差异写入操作，关键便是T3需要等待T1和T2执行结束才能执行。
+
+   ```java
+   while (存在未对账的订单) {
+       // 查询未对账订单
+       Thread t1 = new Thread(() -> {
+           pos = getPOrders();
+       });
+       t1.start();
+       // 查询派送单
+       Thread t1 = new Thread(() -> {
+           dos = getDOrders();
+       });
+       t2.start();
+       
+       // 等待
+       t1.join();
+       t2.join();
+       
+       // 对账
+       diff = check(pos, dos);
+       // 差异写库
+       save(diff);
+   }
+   ```
+
+3. 方案三：`CountDownLatch`
+
+   在方案二已经提升了大部分性能，但美中不足的是每次都要创建新的线程，是一个比较重且浪费线程的操作，那么首先想到的便是线程池！是的，线程池的确可以解决这个问题，但问题是，使用线程池后怎样保证执行顺序问题？线程池没有提供 `join()` 方法，如何检测T1 T2执行结束呢 —— 计数器，每个查询执行完成后将计数器减一，当计数器为0时便是T3执行的时间，但无需重复造轮子了，呐：`CountDownLatch`
+
+   ```java
+   // 创建 2 个线程的线程池
+   Executor executor = Executors.newFixedThreadPool(2);
+   while (存在未对账的订单) {
+       // 计数器初始化：2
+       CountDownLatch latch = new CountDownLatch(2);
+       
+       // 查询未对账订单
+       executor.execute(() -> {
+           pos = getPOrders();
+           latch.countDown();
+       });
+       // 查询派送单
+       executor.execute(() -> {
+           dos = getDOrders();
+           latch.countDown();
+       });
+       
+       // 等待
+       latch.asait();
+       
+       // 对账
+       diff = check(pos, dos);
+       // 差异写库
+       save(diff);
+   }
+   ```
+
+4. 进一步优化性能——==**完全并行**==：`CyclicBarrier`
+
+   进一步钻进去看，其实，两个查询操作和 `check() & save()` 操作之间也是可以并行的：当在 `check() & save()` 时又已经可以进行下一次查询了：![image-20220430184125124](images/image-20220430184125124.png)
+
+   完全并行，那么需要将T1 T2的查询结果用队列存储起来，T3从队列中获取订单 `check() & save()` 即可，那不就是生产者- 消费者模式了吗。
+
+   队列设计：简单的来说，使用两个队列分别存储，但需要两个队列一一对应：![image-20220430184434378](images/image-20220430184434378.png)
+
+   双队列并行执行：T1执行订单查询，T2执行派单查询，都查询结束后通知T3执行对账检查。这个想法看似简单，但T1和T2的步调应该一致，不能一个太快一个太慢，需要T1和T2都查询一次结束后再通知T3进行对账检查：![image-20220430185006740](images/image-20220430185006740.png)
+
+   有了想法便来实现。上述的方案两个难点：
+
+   1. T1和T2需要步调一致
+   2. 通知T3对账检查
+
+   依然可以使用方案三的计数器来解决：循环利用计数器，将计数器后的对账检查提取为异步操作。但是同样的，不需要重复造轮子 —— 循环计数器 `CyclicBarrier`。
+
+   `CyclicBarrier` 工具需要指定一个计数器，并传入一个回调函数，当计数器减到 0 时，将会触发回调函数，粗看与 `CountDownLatch` 并无差异，但重点便是 `CyclicBarrier` 有自动重置计数器的功能：当减到 0 时，待回调函数执行完成后重设初始值。
+
+   `CountDownLatch` 的计数器是不能循环利用的，也就是说一旦计数器减到 0，再有线程调用 `await()`，该线程会直接通过。但 `CyclicBarrier` 的计数器是可以循环利用的，而且具备自动重置的功能，一旦计数器减到 0 会自动重置到你设置的初始值。
+
+   ```java
+   // 订单队列
+   Vector<P> pos;
+   // 派送单队列
+   Vector<D> dos;
+   // 执行回调的线程池
+   Executor executor = Executors.newFixedThreadPool(1);
+   final CyclicBarrier barrier = new CyclicBarrier(2, () -> {
+       executor.execute(() -> check());
+   });
+   
+   void check() {
+       P p = pos.remove(0);
+       D d = dos.remove(0);
+       // 执行对账操作
+       diff = check(p, d);
+       // 差异写入差异库
+       save(diff);
+   }
+   
+   void checkAll() {
+       // 循环查询订单库
+       Thread T1 = new Thread(() -> {
+           while (存在未对账订单) {
+               // 查询订单库
+               pos.add(getPOrders());
+               // 等待
+               barrier.await();
+           }
+       });
+       T1.start();
+       
+       // 循环查询派单库
+       Thread T2 = new Thread(() -> {
+           while (存在未对账订单) {
+               // 查询派单库
+               dos.add(getDOrders());
+               // 等待
+               barrier.await();
+           }
+       });
+       T2.start();
+   }
+   ```
+
+   - 为什么需要一个 `Executors.newFixedThreadPool(1);` 线程池？
+     - 异步啊！不异步不就同步了吗
+     - 一个线程是因为两个队列的获取操作存在竞态条件
+
+   - 循环计数器何时循环？当回调函数执行完成后，`CyclicBarrier.await()` 处都会被唤醒。
+
+   - T3执行的时候是哪个线程执行？`CyclicBarrier` 的回调函数执行在一个回合的最后执行 `await()` 的线程上。
+
+### 6.4 Semaphore
 
 初始化设置一个许可集大小，每次 `acquire` 申请一个许可集（可一次性申请多个），如果没有则阻塞等待；每次 `release` 释放一个许可集（可一次性释放多个）。
 
