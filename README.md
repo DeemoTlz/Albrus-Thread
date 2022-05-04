@@ -1,6 +1,8 @@
 # Albrus-Tlz
 (:3[▓▓▓▓▓▓▓▓]
 > Systematically study the idea of multi-threaded concurrency and practice and record to deepen understanding.
+>
+> 参考书籍；《图解 Java 多线程设计模式》《Java 安全编码标准》
 
 ## 一、JUC概述和进程线程概念
 
@@ -833,29 +835,29 @@ interface BlockingQueue<E>
 
 > 由数组结构组成的**==有界==**阻塞队列。
 
-基于数组的阻塞队列实现，在 ArrayBlockingQueue 内部，维护了一个定长数 组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数 组外，ArrayBlockingQueue 内部还保存着两个整形变量，分别标识着队列的 头部和尾部在数组中的位置。
+基于数组的阻塞队列实现，在 `ArrayBlockingQueue` 内部，维护了一个定长数组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数 组外，`ArrayBlockingQueue` 内部还保存着两个整形变量，分别标识着队列的 头部和尾部在数组中的位置。
 
-**==ArrayBlockingQueue 在生产者放入数据和消费者获取数据，都是共用同一个 锁对象，由此也意味着两者无法真正并行运行==**，这点尤其不同于 LinkedBlockingQueue；按照实现原理来分析，ArrayBlockingQueue 完全可 以采用分离锁，从而实现生产者和消费者操作的完全并行运行。Doug Lea 之 所以没这样去做，也许是因为 ArrayBlockingQueue 的数据写入和获取操作已 经足够轻巧，以至于引入独立的锁机制，除了给代码带来额外的复杂性外，其 在性能上完全占不到任何便宜。 
+**==`ArrayBlockingQueue` 在生产者放入数据和消费者获取数据，都是共用同一个 锁对象，由此也意味着两者无法真正并行运行==**，这点尤其不同于 `LinkedBlockingQueue`；按照实现原理来分析，`ArrayBlockingQueue` 完全可以采用分离锁，从而实现生产者和消费者操作的完全并行运行。Doug Lea 之 所以没这样去做，也许是因为 `ArrayBlockingQueue` 的数据写入和获取操作已经足够轻巧，以至于引入独立的锁机制，除了给代码带来额外的复杂性外，其 在性能上完全占不到任何便宜。 
 
 ##### 7.1.5.2 LinkedBlockingQueue 
 
 >  由链表结构组成的**==有界（但大小默认值为 integer.MAX_VALUE）==**阻塞队列。
 
-LinkedBlockingQueue 之所以能够高效的处理并发数据，还因为**==其对于生 产者端和消费者端分别采用了独立的锁来控制数据同步，这也意味着在高并发 的情况下生产者和消费者可以并行地操作队列中的数据，以此来提高整个队列 的并发性能==**。
+`LinkedBlockingQueue` 之所以能够高效的处理并发数据，还因为**==其对于生产者端和消费者端分别采用了独立的锁来控制数据同步，这也意味着在高并发的情况下生产者和消费者可以并行地操作队列中的数据，以此来提高整个队列 的并发性能==**。
 
 ##### 7.1.5.3 DelayQueue
 
 > 使用优先级队列实现的延迟**==无界==**阻塞队列。
 
-DelayQueue 中的元素只有当其指定的延迟时间到了，才能够从队列中获取到该元素。DelayQueue 是一个没有大小限制的队列，因此往队列中插入数据的操作**==（生产者）永远不会被阻塞，而只有获取数据的操作（消费者）才会被阻塞==**。
+`DelayQueue` 中的元素只有当其指定的延迟时间到了，才能够从队列中获取到该元素。`DelayQueue` 是一个没有大小限制的队列，因此往队列中插入数据的操作**==（生产者）永远不会被阻塞，而只有获取数据的操作（消费者）才会被阻塞==**。
 
 ##### 7.1.5.4 PriorityBlockingQueue
 
 > 支持优先级排序的**==无界==**阻塞队列。
 
-基于优先级的阻塞队列（优先级的判断通过构造函数传入的 Compator 对象来决定），但需要注意的是 PriorityBlockingQueue 并**==不会阻塞数据生产者==**，而只会在没有可消费的数据时，阻塞数据的消费者。
+基于优先级的阻塞队列（优先级的判断通过构造函数传入的 `Compator` 对象来决定），但需要注意的是 `PriorityBlockingQueue` 并**==不会阻塞数据生产者==**，而只会在没有可消费的数据时，阻塞数据的消费者。
 
-在实现 PriorityBlockingQueue 时，内部控制线程同步的锁采用的是公平锁。
+在实现 `PriorityBlockingQueue` 时，内部控制线程同步的锁采用的是公平锁。
 
 ##### 7.1.5.5 SynchronousQueue
 
@@ -865,13 +867,13 @@ DelayQueue 中的元素只有当其指定的延迟时间到了，才能够从队
 
 > 由链表组成的**==无界==**阻塞队列。
 
-LinkedTransferQueue 是一个由链表结构组成的无界阻塞 TransferQueue 队 列。相对于其他阻塞队列，LinkedTransferQueue 多了 tryTransfer 和 transfer 方法。
+`LinkedTransferQueue` 是一个由链表结构组成的无界阻塞 `TransferQueue` 队 列。相对于其他阻塞队列，`LinkedTransferQueue` 多了 `tryTransfer` 和 `transfer `方法。
 
 ##### 7.1.5.7 LinkedBlockingDeque
 
 >  由链表组成的**==有界（但大小默认值为 integer.MAX_VALUE）==**双向阻塞队列。
 
-LinkedBlockingDeque 是一个由链表结构组成的双向阻塞队列，即可以从队 列的两端插入和移除元素。
+`LinkedBlockingDeque` 是一个由链表结构组成的双向阻塞队列，即可以从队列的两端插入和移除元素。
 
 ### 7.2 原子类
 
@@ -1505,6 +1507,383 @@ try {
 ```
 
 ## 十、Fork/Join
+
+注意：`a.fork() & b.fork() & b.join() & a.join()` 调用顺序！
+
+## 十一、设计模式
+
+### 11.1 Immutability模式
+
+**将一个类所有的属性都设置成 final 的，并且只允许存在只读方法，那么这个类基本上就具备不可变性了。更严格的做法是这个类本身也是 final 的，也就是不允许继承。**
+
+Java SDK 里很多类都具备不可变性，例如经常用到的 String 和 Long、Integer、Double 等基础类型的包装类都具备不可变性， 这些对象的线程安全性都是靠不可变性来保证的（String 的 `replace()` 方法返回的也是新字符串）。
+
+如果具备不可变性的类，**需要提供类似修改的功能**，具体该怎么操作呢？==**做法很简单，那就是创建一个新的不可变对象。**==
+
+享元模式（Flyweight Pattern）：==**利用享元模式可以减少创建对象的数量（本质是一个对象池）**==，从而减少内存占用。Java 语言里面 Long、Integer、Short、Byte 等这些基本数据类型的包装类都用到了享元模式。**因此，这些类也不适合当作互斥锁来使用，因为内部缓存得有数据导致对象被重用。**
+
+**在使用 Immutability 模式的时候一定要确认保持不变性的边界在哪里，是否要求属性对象也具备不可变性。**
+
+具备不变性的对象，只有一种状态，这个状态由对象内部所有的不变属性共同决定，其实还有一种更简单的不变性对象 —— **无状态**，只有方法没有属性。
+
+### 11.2  Copy-on-Write模式
+
+> Linux 中的 fork() 函数就聪明得多 了，fork() 子进程的时候，并不复制整个进程的地址空间，而是让父子进程共享同一个地址 空间；只用在父进程或者子进程需要写入的时候才会复制地址空间，从而使父子进程拥有各 自的地址空间。
+>
+> 使用 Copy-on-Write 更多地体 现的是一种==**延时策略，只有在真正需要复制的时候才复制，而不是提前复制好**==，同时 Copy-on-Write 还支持**按需复制**，所以 Copy-on-Write 在操作系统领域是能够提升性能 的。
+
+现有的 `CopyOnWriteArrayList` 和 `CopyOnWriteArraySet` 都比较傻，一旦修改需要全量复制，因此建议仅仅是读多写非常少的场景使用，例如RPC的路由表（接口方法与服务方的路由信息）。
+
+### 11.3 线程本地存储模式
+
+> 没有共享，就没有伤害。
+>
+> getEntry(): 0x61c88647，解决hash碰撞的一个神奇的数？
+
+Java 中对 `ThreadLocal` 的实现：
+
+由 Thread 持有 `ThreadLocal.ThreadLocalMap`，`ThreadLocalMap` 的 key 是 `ThreadLocal`（就是说，Thread 的所有线程安全变量全部由 `ThreadLocalMap` 存储，每种不同的 `ThreadLocal` 类型数据都是一个不同的 key，也就是集中管理）：![image-20220503183812982](images/image-20220503183812982.png)
+
+```java
+public class Thread() {
+    /* ThreadLocal values pertaining to this thread. This map is maintained
+     * by the ThreadLocal class. */
+    ThreadLocal.ThreadLocalMap threadLocals = null;
+}
+
+public class ThreadLocal<T> {
+    void createMap(Thread t, T firstValue) {
+        // this -> ThreadLocal
+        t.threadLocals = new ThreadLocalMap(this, firstValue);
+    }
+    
+    public T get() {
+        // 首先获取线程持有的
+        // ThreadLocalMap
+        ThreadLocalMap map = Thread.currentThread().threadLocals;
+        // 在 ThreadLocalMap 中 查找变量 this -> ThreadLocal
+        Entry e = map.getEntry(this);
+        return e.value;
+    }
+    
+    static class ThreadLocalMap {
+        // 内部是数组而不是 Map
+        Entry[] table;
+        // 根据 ThreadLocal 查找 Entry
+        Entry getEntry(ThreadLocal key) {
+            // 省略查找逻辑
+        }
+        // Entry 定义
+        static class Entry extends WeakReference<ThreadLocal> {
+            Object value;
+            Entry(ThreadLocal<?> k, Object v) {
+                // 弱引用
+                super(k);
+                value = v;
+            }
+        }
+    }
+}
+```
+
+而不是说 `ThreadLocalMap` 持有 Thread，Java 中的设计更合理一些，Java 设计中，`ThreadLocal` 仅仅是一个代理工具类，内部不持有任何与线程相关的数据，所有和线程相关的数据都存储在 Thread 里面，这样的设计更容易理解，从数据的亲缘性来将，`ThreadLocalMap` 属于 Thread 也更加合理。
+
+更深层次的原因是==**不容易产生内存泄漏**==：如果是由 `ThreadLocal` 持有的 Map 持有 Thread 对象的引用，那么意味着只要 `ThreadLocal` 对象存在，那么 Map 中的 Thread 对象就永远不会被回收，而 `ThreadLocal` 的生命周期往往都比线程长。而 Java 实现中 Thread 持有 `ThreadLocalMap`，而且 `ThreadLocalMap` 里对 `ThreadLocal` 的引用还是弱引用，所以，只要 Thread 对象可以被回收，那么 `ThreadLocalMap` 就能被回收。
+
+- ==**`ThreadLocal` 与内存泄漏**==：
+
+  **在线程池中或者不会销毁的线程中使用 `ThreadLocal` 可能会导致内存泄漏！**原因是因为线程的存活时间太长，如果跟程序共同生死，这就意味着 Thread 持有的 `ThreadLocalMap` 一直都不会被回收。虽然 `ThreadLocalMap` 对 `ThreadLocal` 是弱引用，只要 `ThreadLocal` 结束了自己的生命周期就可以被回收掉，但是其中的 `Object value` 确实强引用，所以即便 Value 的生命周期结束了，Value 也是无法被回收的！
+
+  那么怎么解决呢？==**`try {} finally {} ` 手动释放。**==
+
+- `InheritableThreadLocal` 与继承性
+
+  通过 `ThreadLocal` 创建的线程变量，子线程无法继承。而 `InheritableThreadLocal` 支持了这种特性，但是不建议使用，一是容易内存泄漏，而是容易导致继承关系错乱导致数据错误
+
+- ==**`ThreadLocal` 与 局部变量**==
+
+  局部变量会随着调用量而创建新对象，`ThreadLocal` 新建对象是线程数，两者差距很大
+
+### 11.4 Guarded Suspension模式
+
+> 多线程版等待唤醒机制的规范实现，Guarded Suspension 模式也常被称作 Guarded Wait 模式、Spin Lock 模式（因为使用 了 while 循环去等待）。
+
+设想一个现实场景：朋友聚众取餐厅聚餐，发现包间没收拾好，等待服务员收拾结束后**大堂经理**再通知就餐。
+
+设想一个实际场景：线程 T1 发送一个异步请求到 MQ，等 MQ 响应后再返回结果，但消费 MQ 结果的线程并不是线程 T1，此时如何通知线程 T1 等待并拿到 MQ 的返回结果呢？
+
+**其实本质上都是“等待 - 唤醒”机制，但此时由于不在同一个线程，因此需要增加一个类似于“大堂经理”的角色完成调度，并且“大堂经理”需要很聪明，能够知道 T1 与 返回结果 的对应关系。**
+
+前人种树，后人乘凉。前人将其总结为了一个设计模式：Guarded Suspension，保护性暂停。下图就是 Guarded Suspension 模式的结构图，一个对象 `GuardedObject`，内部有一个成员变量 —— 受保护对象，两个成员方法 —— `get(Predicate<T> p) & onChange(T obj)`。 `GuardedObject` 类似于大堂经理角色，==**受保护对象便是包间（需要通信传递的数据对象）**==，`get()` 方法的参数 p 便是前提条件，`onChange() ` 方法可以 fire 一个事件，这个事件往往能改变前提条件 p 的计算结果。
+
+ ![image-20220503194120159](images/image-20220503194120159.png)
+
+通用模板：
+
+```java
+class GuardedObject<T>{
+    // 受保护的对象
+    volatile T obj;
+    final Lock lock = new ReentrantLock();
+    final Condition done = lock.newCondition();
+    final int timeout = 1;
+    
+    // 获取受保护对象
+    T get(Predicate<T> p) {
+        lock.lock();
+        try {
+            //MESA 管程推荐写法
+            while(!p.test(obj)){
+                done.await(timeout, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e){
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
+        }
+        
+        // 返回非空的受保护对象
+         return obj;
+    }
+    
+    // 事件通知方法
+    void onChanged(T obj) {
+        lock.lock();
+        try {
+            this.obj = obj;
+            done.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+- ==**注意收保护的对象的可见性问题：`volatile`**==
+
+这个模板仍需要改进，因为它并不像大堂经理一样知道谁在等待哪个包间，因此，需要增加一个通信机制识别谁在等待谁：
+
+此时需要找出一个可以联系的点，比如实际问题中的 T1 等待 MQ 中的返回结果，可以通过消息的唯一 ID 确认双方谁在等待谁，有了这个关系，我们便可以维护一个 MQ 消息 ID 和 `GuardedObject` 对象实例的关系：在 `GuardedObject` 中维护一个 Map，key 是 MQ 消息 ID，value 是 `GuardedObject` 对象实例，同时增加静态方法 `create() & fireEvent()`：
+
+```java
+// 保存所有 GuardedObject
+final static Map<Object, GuardedObject> gos= new ConcurrentHashMap<>();
+
+// 静态方法创建 GuardedObject
+static <K> GuardedObject create(K key) {
+    GuardedObject go = new GuardedObject();
+    gos.put(key, go);
+    return go;
+}
+
+// 静态方法找到谁（GuardedObject）在等并触发 onChanged
+static <K, T> void fireEvent(K key, T obj) {
+    GuardedObject go = gos.remove(key);
+    if (go != null) {
+        go.onChanged(obj);
+    }
+}
+```
+
+### 11.5 Balking模式
+
+> 本质上也是一种规范化地解决“多线程版本 if”的方案。
+
+Balking模式相比 Guarded Suspension模式，后者需要一直等一直等，必须等到结果才会返回，而前者便是为了解决此现象而设计的。
+
+### 11.6 Thread-Per-Message模式
+
+我们曾经把并发编程领域的问题总结为三个核心问题：分工、同步和互斥。其中，同步和互 斥相关问题更多地源自微观，而分工问题则是源自宏观。我们解决问题，往往都是从宏观入 手，在编程领域，软件的设计过程也是先从概要设计开始，而后才进行详细设计。==**同样，解 决并发编程问题，首要问题也是解决宏观的分工问题。**==并发编程领域的分工问题，指的是如何高效地拆解任务并分配给线程。
+
+> 并发编程领域里，解决分工问题也有一系列的设计模式，比较常用的主要有 Thread-Per-Message 模式、Worker Thread 模式、生产者 - 消费者模式等等。
+
+==理解 Thread-Per-Message模式，可以想象网络编程中的服务端实现，主线程只接收客户端请求，将客户端请求的处理任务交由子线程去处理。==
+
+而在 Java 中由于创建-销毁线程太过于**重量级**，因此**直接创建-销毁线程开销很大**，不切实际，因此解决方案会想到用线程池，这也算是 Java 语言的特性原因（Java 线程与操作系统线程一一对应，好处是稳定、可靠，缺点是创建成本高）导致，而像 Go、Lua 语言里的协程，有一种叫**轻量级线程**的解决方案，其创建的成本很低，基本上和创建一个普通对象的成本相似，并且创建的速度和内存占用相比操作系统至少有一个数量级的提升，因此基于轻量级线程实现的 Thread-Per-Message模式就完成没问题。
+
+==**在 OpenJDK 中有个 Loom 项目，其中的 Fiber 就是用于解决 Java 语言的轻量级线程问题**==，对比 Thread 的实现，使用上改动非常小：只需将 `new Thread(() -> {}).start()` 修改为 `Fiber.schedule(() -> {]})`。
+
+### 11.7 Worker Thread模式
+
+同样也是一种面向分工的设计模式。
+
+==Worker Thread模式可以类比现实世界中车间的工作模式，有活了大家一起干没活就一起闲聊，对应 Java 语言中的线程池。==
+
+- 使用线程池一定要注意任务队列是否是无界队列
+- 最好根据业务需求实现线程工厂方便调试和诊断
+- 当线程池任务队列满时的拒绝策略也一定要清晰
+- **避免死锁**：工厂里只有一个工人，但他的工作是等待工厂中的其他人给他提供东西！恰到好处的比喻。
+
+Worker Thread模式与 Thread-Per-Message模式不同的是，前者是不关心任务被哪个线程执行，后者是主线程可以直接与子线程进行沟通。
+
+### 11.8 两阶段终止模式
+
+Java 语言中 Thread 曾经提供了一个 `stop()` 方法来终止线程，但是早已经不建议使用了，原因便是因为这个方法会一剑封喉，被终止的线程没有任何机会“料理后事”。
+
+两阶段终止模式：![image-20220504100600433](images/image-20220504100600433.png)
+
+1. 第一阶段发送终止指令
+2. 第二阶段响应终止指令
+
+回顾 Java 线程的生命周期：<img src="images/image-20220504100624184.png" alt="image-20220504100624184" style="zoom:50%;" />
+
+==**Java 线程进入终止状态的前提状态是 RUNNABLE 状态**==，而实际上线程也可以处于休眠状态，那么如何将休眠状态的线程切换到 RUNNABLE 状态呢？`interrupt()`
+
+**使用注意事项：**
+
+- `Thread.currentThread().isInterrupted()` 判断线程的中断线程
+- 手动 `Thread.interrupt()` 中断线程时，会抛出 `InterruptedException`，需要注意的是，在捕获该异常后，==**JVM 的异常处理会清除线程的中断状态**==，如有需要，需要手动重新设置线程的中断状态 `Thread.currentThread().interrupt() `
+- 基于以上原因，当引入第三方库提供的业务方法时，我们没有办法保证第三方库正确处理了线程的中断异常，因此==**建议设置自己的线程中断标志位**==
+
+**优雅地终止线程池：**
+
+- `shutdown()`
+
+  拒绝接收新的任务，会等待线程池中阻塞队列的任务（包括正在被线程执行的任务）都执行完毕之后再关闭线程池
+
+- `shutdownNow()`
+
+  更激进一些，不但会拒绝接收新的任务，同时还会中断线程池中正在执行的任务，阻塞队列中的任务也会被剥夺执行的机会，但**这些被剥夺执行机会的任务会作为该方法的返回值**
+
+### 11.9 生产者 - 消费者模式
+
+> Java 线程池本质上就是用生产者 - 消费者模式实现的。
+
+生产者 - 消费者模式的核心是一个**任务队列**，生产者生产任务并将任务添加到任务队列，消费者从任务队列中获取任务并执行。![image-20220504105950723](images/image-20220504105950723.png)
+
+**从架构设计来看，该模式的优点：**
+
+- 解耦
+
+  解耦的关键是组件之间的依赖关系和通信方式必须受限。**在生产者 - 消费者模式中，生产者和消费者没有任何依赖关系，彼此间的通信只能通过任务队列。**
+
+- 异步
+
+  生产者只需将任务提交到任务队列中无需等待任务被消费者线程执行完
+
+- 平衡生产者和消费者的速度差异
+
+  当两者间速度存在差异时，通过此模式来平衡二者之间的速度差异，减少线程创建、减少上下文切换提高效率。在 Java 中，Java 的线程和操作系统线程是一一对应的，并不是线程越多越好。
+
+**批量执行：**
+
+批量执行的核心要点是如何优雅地获取批量任务？
+
+```java
+// 任务队列（LinkedBlockingQueue 读写使用不同的锁提高性能）
+BlockingQueue<Task> bq = new LinkedBlockingQueue<>(2000);
+List<Task> pollTasks() throws InterruptedException {
+    List<Task> ts = new LinkedList<>();
+    
+    // 阻塞式获取第一条任务
+    Task t = bq.take();
+    while (t != null) {
+        ts.add(t);
+        // 非阻塞式获取任务
+        t = bq.poll();
+    }
+    
+    return ts;
+}
+```
+
+- `LinkedBlockingQueue` 读写使用不同的锁提高性能
+- 首先以阻塞式获取第一条任务，而后以非阻塞式获取任务，避免没必要的循环
+
+**分阶段提交：**
+
+> 写文件如果同步刷盘性能会很慢，所以对于不是很重要的数据，我们可以采用异步刷盘的方式。
+
+设计一个日志组件，其刷盘机制如下：
+
+1. ERROR 级别的日志需要立即刷盘
+2. 数据积累到 500 条需要立即刷盘
+3. 存在未刷盘数据，且 5 秒钟内未曾刷盘，需要立即刷盘
+
+该需求本质上是一种**分阶段提交**，具体看看怎么设计：
+
+```java
+// 任务队列
+final BlockingQueue<LogMsg> bq = new BlockingQueue<>();
+// flush 批量
+static final int batchSize = 500;
+// 只需要一个线程写日志
+ExecutorService es = Executors.newFixedThreadPool(1);
+
+void start() {
+    final FileWriter writer = new FileWriter(file);
+    this.es.execute(() -> {
+        try {
+            // 批量标记
+            int idx = 0;
+            long preFT = System.currentTimeMillis();
+            while (!terminated) {
+                LogMsg log = bq.poll(5, TimeUnit.SECONDS);
+                if (log == null) {
+                    continue;
+                }
+                
+                writer.write();
+                ++idx;
+                
+                // 根据规则刷盘
+                if (log.level==LEVEL.ERROR ||
+                   curIdx == batchSize ||
+                    System.currentTimeMillis() - preFT > 5000)) {
+                    writer.flush();
+                    idx = 0;
+                    preFT = System.currentTimeMillis();
+                }
+            }
+        } catch(Exception e) {
+            e.printStackTrace();
+        } finally {
+            writer.flush();
+            writer.close();
+        }
+    });
+}
+```
+
+- 思考如何停止
+
+  日志系统一般是最后退出的环节，因此可以使用“毒丸”消息，等消费队列中的所有任务都被消费后再退出循环。
+
+**优雅地终止生产者 - 消费者服务之“毒丸”：**
+
+==**“毒丸”对象是生产者生产的一条特殊任务，当消费者线程读到“毒丸”任务时，会立即终止自身的执行。**==
+
+```java
+// 用于终止日志执行的“毒丸”
+final LogMsg poisonPill = new LogMsg(LEVEL.ERROR, "");
+// 任务队列
+final BlockingQueue<LogMsg> bq = new LinkedBlockingQueue<>();
+
+LogMsg logMsg;
+while (!terminated) {
+    logMsg = bq.poll(5, TimeUnit.SECONDS);
+    if (poisonPill.equals(logMsg)) {
+        // 毒丸消息
+        break;
+    }
+    // ...
+}
+```
+
+- 自定义中断标志 `terminated`
+- 判断、处理“毒丸”消息
+
+## 十二、案例分析
+
+### 12.1 高性能限流器 Guava | RateLimiter
+
+### 12.2 高性能网络应用框架 Netty
+
+> https://wangwei.one/tags/Netty/
+
+### 12.3 高性能队列 Disruptor
+
+### 12.4 高性能数据库连接池 HiKariCP
 
 
 
