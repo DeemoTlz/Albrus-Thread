@@ -875,11 +875,241 @@ interface BlockingQueue<E>
 
 `LinkedBlockingDeque` 是一个由链表结构组成的双向阻塞队列，即可以从队列的两端插入和移除元素。
 
-### 7.2 原子类
+### 7.2 volatile
+
+> `volatile` 是 Java 虚拟机提供的轻量级的同步机制：
+>
+> 1. 保证可见性
+> 2. ==**不保证原子性**==
+> 3. 禁止指令重排
+
+#### 7.2.1 JMM Java 内存模型
+
+> Java Memory Model 本身是一种抽象的概念，并不真实存在，描述的是一组规则或规范，定义了程序中各个变量（实例字段、静态字段、构成数组对象的元素）的访问方式。
+
+**JMM 关于同步的规定：**
+
+1. 线程解锁前：必须将共享变量的值刷新回主内存
+2. 线程加锁前：必须从主内存读取最新的共享变量到自己的工作内存
+3. 加锁、解锁是同一把锁
+
+由于 JVM 允许程序的实体是**线程**，而每个线程创建时 JVM 都会**为其创建一个工作内存（栈空间）**，工作内存是每个线程的私有数据区域，而 **JMM 规定所有变量都==存储==在主内存**（主内存是共享内存区域，所有线程都可以访问），**但线程对变量的==操作（读取、赋值等）==必须在各自的工作内存中进行**：==**线程首先将变量从主内存拷贝到自己的工作空间，然后对变量进行操作，操作完成后再将变量写回主内存。**==不能直接操作主内存的变量，各个线程的工作空间中存储的都是**主内存中变量的副本拷贝**，因此线程间无法访问对方的工作内存，==**线程间的通信必须通过主内存完成**==：
+
+![image-20220626103839246](images/image-20220626103839246.png)
+
+#### 7.2.2 保证可见性
+
+```java
+public class DeemoVolatile {
+
+    public static void main(String[] args) {
+        Data data = new Data();
+
+        new Thread(() -> {
+            System.out.println("Thread: " + Thread.currentThread().getName() + "\t come in...");
+            DeemoUtils.sleep(3);
+            data.add(66);
+            System.out.println("Thread: " + Thread.currentThread().getName() + "\t added " + 66 + " is over.");
+        }, "Thread-Volatile").start();
+
+        while (data.getData() == 0) {
+            // System.out.println(data.getData());
+        }
+
+        System.out.println("main thread is over.");
+    }
+
+    private static class Data {
+        int data = 0;
+        // volatile int data = 0;
+
+        public void add(int value) {
+            this.data += value;
+        }
+
+        public int getData() {
+            return data;
+        }
+
+        public void setData(int data) {
+            this.data = data;
+        }
+    }
+}
+```
+
+#### 7.2.3 不保证原子性
+
+> 不可分割、完整性，中间不能被加塞或被分割，要么同时成功，要么同时失败。
+
+也即：多个线程对 `volatile` 变量的修改**存在线程冲突**：
+
+```java
+public static void main(String[] args) {
+    Data data = new Data();
+
+    for (int i = 0; i < 20; i++) {
+        new Thread(() -> {
+            for (int j = 0; j < 1000; j++) {
+                data.add(1);
+            }
+        }, "Thread-Volatile-" + i).start();
+    }
+
+    // 默认存在 main 线程和 GC 线程
+    while (Thread.activeCount() > 2) {
+        Thread.yield();
+    }
+
+    System.out.println("main thread is over, the value is: " + data.getData());
+}
+```
+
+**`++` 指令：**
+
+```java
+public class DeemoPlusPlus {
+    private volatile int n;
+
+    public void add() {
+        /*
+            LINENUMBER 7 L0
+            ALOAD 0
+            DUP
+            GETFIELD com/deemo/thread/DeemoPlusPlus.n : I
+            ICONST_1 入栈
+            IADD
+            PUTFIELD com/deemo/thread/DeemoPlusPlus.n : I
+         */
+        n++;
+    }
+}
+```
+
+- `++` 指令底层会被拆解：`GETFIELD、IADD、PUTFIELD`
+- [字节码](https://www.jianshu.com/p/47de87deeb33)
+
+**解决原子性：**
+
+加锁、原子类（CAS）。
+
+#### 7.2.4 禁止指令重排
+
+为了提高性能，编译器和处理器常常会对指令做重拍：源代码 -> 编译器优化的重排 -> 指令并行的重排 -> 内存系统的重排 -> 最终执行的指令。
+
+- 确保在**单线程**中，重排后的指令执行结果与源代码执行结果一致
+- 处理器在进行重排时必须考虑指令之间**数据依赖性**
+
+**DCL（Double Check Lock）单例模式：**
+
+> 指令重排问题
+
+`instance = new Instance();` 可以分为以下 3 步完成：
+
+1. `memory = allocate();`：分配对象内存空间
+2. `instance(memory);`：初始化对象
+3. `instance = memory;`：指向内存地址
+
+如果指令重排执行顺序为：1 -> 3 -> 2 便会存在问题：**对象还未完成初始化**。
+
+**内存屏障（Memory Barrier），是一个 CPU 指令（了解）：**
+
+- 保证特定操作的执行顺序
+- 保证某些变量的内存可见性
+
+![image-20220626120911748](images/image-20220626120911748.png)
+
+### 7.3 Happens-Before
+
+![img](images/v2-e1078c60d3c7cf74de4e77f1694545b2_720w.jpg)
+
+**【原则一】程序次序规则**
+
+在一个线程中，按照代码的顺序，前面的操作 Happens-Before 于后面的任意操作。
+
+例如【示例一】中的程序 `x=42` 会在 `v=true` 之前执行。
+
+这个规则比较符合单线程的思维：在同一个线程中，程序在前面对某个变量的修改一定是对后续操作可见的。
+
+**【原则二】volatile 变量规则**
+
+对一个 `volatile` 变量的写操作，Happens-Before 于后续对这个变量的读操作。
+
+也就是说，对一个使用了 `volatile` 变量的写操作，先行发生于后面对这个变量的读操作。这个需要大家重点理解。
+
+**【原则三】传递规则**
+
+如果A Happens-Before B，并且B Happens-Before C，则A Happens-Before C。
+
+我们结合【原则一】、【原则二】和【原则三】再来看【示例一】程序，此时，我们可以得出如下结论：
+
+1. `x = 42` Happens-Before 写变量 `v = true`，符合【原则一】程序次序规则。
+2. 写变量 `v = true` Happens-Before 读变量 `v = true`，符合【原则二】volatile 变量规则。
+
+再根据【原则三】传递规则，我们可以得出结论：`x = 42` Happens-Before 读变量 `v=true`。
+
+也就是说，如果线程B读取到了 `v=true` ，那么，线程A设置的 `x = 42` 对线程B就是可见的。换句话说，就是此时的线程B能够访问到 `x=42`。
+
+**其实，Java 1.5版本的 `java.util.concurrent` 并发工具就是靠 volatile 语义来实现可见性的。**
+
+**【原则四】锁定规则**
+
+对一个锁的解锁操作 Happens-Before 于后续对这个锁的加锁操作。
+
+例如，下面的代码，在进入 `synchronized` 代码块之前，会自动加锁，在代码块执行完毕后，会自动释放锁。
+
+![img](images/v2-fce0d63f529cab7a9180102ca8987d33_720w.jpg)示例2
+
+我们可以这样理解这段程序：假设变量x的值为10，线程A执行完synchronized代码块之后将x变量的值修改为10，并释放synchronized锁。
+
+当线程B进入synchronized代码块时，能够获取到线程A对x变量的写操作，也就是说，线程B访问到的x变量的值为10。
+
+**【原则五】线程启动规则**
+
+如果线程A调用线程B的 `start()` 方法来启动线程B，则 `start()` 操作 Happens-Before 于线程B中的任意操作。
+
+我们也可以这样理解线程启动规则：线程A启动线程B之后，线程B能够看到线程A在启动线程B之前的操作。
+
+我们来看下面的代码。
+
+![img](images/v2-3e331eb30a6cc2e2d235a23167a79f04_720w.jpg)示例三
+
+上述代码是在线程A中执行的一个代码片段，根据【原则五】线程的启动规则，线程A启动线程B之后，线程B能够看到线程A在启动线程B之前的操作，在线程B中访问到的x变量的值为100。
+
+**【原则六】线程终结规则**
+
+线程A等待线程B完成（在线程A中调用线程B的 `join()` 方法实现），当线程B完成后（线程A调用线程B的 `join()` 方法返回），则线程A能够访问到线程B对共享变量的操作。
+
+例如，在线程A中进行的如下操作。
+
+![img](images/v2-3155dd0ed9b24b62c0bf6009f7961403_720w.jpg)示例四
+
+**【原则七】线程中断规则**
+
+**对线程 `interrupt()` 方法的调用 Happens-Before 于被中断线程的代码检测到中断事件的发生。**
+
+例如，下面的程序代码。在线程A中中断线程B之前，将共享变量x的值修改为100，则当线程B检测到中断事件时，访问到的x变量的值为100。
+
+![img](images/v2-5df9614a403c649d47c6daa5fc92b5a0_720w.jpg)示例五
+
+**【原则八】对象终结原则**
+
+**一个对象的初始化完成 Happens-Before 于它的 `finalize()` 方法的开始。**
+
+例如，下面的程序代码：
+
+![img](images/v2-ff54a30652b105c105918bdecf0aabf0_720w.jpg)
+
+运行结果如下所示：
+
+1. 构造方法
+2. 对象销毁
+
+### 7.3 原子类
 
 `AtomicLong` 等原子类是无锁的方案实现，最大的好处就是==**性能**==，无需加解锁、无需阻塞等待锁的线程。
 
-#### 7.2.1 无锁方案的实现原理
+#### 7.3.1 无锁方案的实现原理
 
 硬件支持。CPU为了解决并发问题，提供了 CAS 指令（ Compare And Swap）。CAS 指令包含 3 个参数：共享变量的内存地址 A、用于比较的值 B 和共享变量的新值 C；并且只有当内存中地 址 A 处的值等于 B 时，才能将内存中地址 A 处的值更新为新值 C。**作为一条 CPU 指令， CAS 指令本身是能够保证原子性的。**
 
@@ -921,7 +1151,7 @@ do {
 
 ==**ABA 问题如何解决？增加版本号维度。**==
 
-#### 7.2.2 原子类
+#### 7.3.2 原子类
 
 > Java SDK 并发包里提供的原子类内容很丰富，我们可以将它们分为五个类别：**原子化的基本数据类型、原子化的对象引用类型、原子化数组、原子化对象属性更新器和原子化的累加器**。![image-20220501184308337](images/image-20220501184308337.png)
 
