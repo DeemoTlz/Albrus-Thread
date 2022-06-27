@@ -9,4 +9,12 @@ public class DeemoUtils {
             throw new RuntimeException(e);
         }
     }
+
+    public static void join(Thread t) {
+        try {
+            t.join();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

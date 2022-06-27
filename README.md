@@ -1105,11 +1105,11 @@ public class DeemoPlusPlus {
 1. 构造方法
 2. 对象销毁
 
-### 7.3 原子类
+### 7.4 原子类
 
 `AtomicLong` 等原子类是无锁的方案实现，最大的好处就是==**性能**==，无需加解锁、无需阻塞等待锁的线程。
 
-#### 7.3.1 无锁方案的实现原理
+#### 7.4.1 无锁方案的实现原理
 
 硬件支持。CPU为了解决并发问题，提供了 CAS 指令（ Compare And Swap）。CAS 指令包含 3 个参数：共享变量的内存地址 A、用于比较的值 B 和共享变量的新值 C；并且只有当内存中地 址 A 处的值等于 B 时，才能将内存中地址 A 处的值更新为新值 C。**作为一条 CPU 指令， CAS 指令本身是能够保证原子性的。**
 
@@ -1151,13 +1151,95 @@ do {
 
 ==**ABA 问题如何解决？增加版本号维度。**==
 
-#### 7.3.2 原子类
+#### 7.4.2 原子类
 
 > Java SDK 并发包里提供的原子类内容很丰富，我们可以将它们分为五个类别：**原子化的基本数据类型、原子化的对象引用类型、原子化数组、原子化对象属性更新器和原子化的累加器**。![image-20220501184308337](images/image-20220501184308337.png)
 
 Java SDK 并发包里提供的原子类，使用的 `compareAndSet()` 来实现 `cas()`。
 
 注意：原子化的对象引用中，`AtomicStampedReference` 和 `AtomicMarkableReference` 这两个原子类可以解决 ABA 问题。解决方案便是增加一个**版本号**维度。
+
+#### 7.4.3 CAS
+
+> CAS -> Compare-And-Swap，==**是一条 CPU 并发原语**==。
+>
+> 原语属于操作系统用语范畴，是由若干条指令组成，且原语的执行必须是连续、不能被中断。
+>
+> 它的功能是判断内存中某个位置的值是否为预期值，如果是则更新为新的值，这个过程是原子操作。
+
+CAS 并发原语体现在 Java 语言中就是通过 `sun.misc.Unsafe` 类中的各个方法（大部分都是 `native` 方法来操作系统底层命令）。
+
+![image-20220627202411837](images/image-20220627202411837.png)
+
+![image-20220627202110663](images/image-20220627202110663.png)
+
+- `var5`：期望值
+- `var5 + var4`：更新值
+
+**CAS 缺点：**
+
+1. 自旋锁，更新失败会循环尝试，耗费 CPU
+2. 只能保证一个共享变量的原子操作
+3. ABA 问题
+
+#### 7.4.4 ABA 问题
+
+> **首尾**相同，中间可能会存在数据更新，但 CAS 同样会更新成功。
+
+解决方案：额外增加一种唯一性机制，用于感知中间是否发生过变动，即使首尾相同 -> 乐观锁：版本号 stamp -> `AtomicStampedReference`。
+
+```java
+/**
+ * An {@code AtomicStampedReference} maintains an object reference
+ * along with an integer "stamp", that can be updated atomically.
+ *
+ * <p>Implementation note: This implementation maintains stamped
+ * references by creating internal objects representing "boxed"
+ * [reference, integer] pairs.
+ *
+ * @since 1.5
+ * @author Doug Lea
+ * @param <V> The type of object referred to by this reference
+ */
+public class AtomicStampedReference<V> {
+
+    private static class Pair<T> {
+        final T reference;
+        final int stamp;
+        private Pair(T reference, int stamp) {
+            this.reference = reference;
+            this.stamp = stamp;
+        }
+        static <T> Pair<T> of(T reference, int stamp) {
+            return new Pair<T>(reference, stamp);
+        }
+    }
+
+    private volatile Pair<V> pair;
+
+    /**
+     * Creates a new {@code AtomicStampedReference} with the given
+     * initial values.
+     *
+     * @param initialRef the initial reference
+     * @param initialStamp the initial stamp
+     */
+    public AtomicStampedReference(V initialRef, int initialStamp) {
+        pair = Pair.of(initialRef, initialStamp);
+    }
+    
+    // ...
+}
+```
+
+**问题演示：**
+
+```java
+private static final AtomicReference<Integer> atomicReference = new AtomicReference<>(100);
+```
+
+- 注意 `AtomicReference` 是引用级别检测，`Integer` 自带缓存
+- `Integer` 自带缓存部分有 ABA 问题，未缓存部分其实没有 ABA 问题
 
 ## 八、线程池
 
