@@ -430,6 +430,10 @@ interface Lock
 
 ### 4.2 公平锁、非公平锁
 
+> 公平锁按照申请锁的顺序来获取锁。
+>
+> 非公平锁，吞吐量更大，`synchroinzed` 是非公平锁。
+
 ```java
 /**
  * Creates an instance of {@code ReentrantLock}.
@@ -467,15 +471,36 @@ public ReentrantLock(boolean fair) {
   }
   ```
 
-- 非公平锁减少线程切换，效率更高
+- 非公平锁减少线程切换，效率更高，会造成**“饥饿”**现象
 
 ### 4.3 可重入锁
 
-可重入锁、递归锁。
+> 可重入锁、递归锁。
+>
+> 线程可进入任何一个它**已经拥有的锁所同步着的代码块**。
 
 `synchroinzed & ReentrantLock & ReentrantReadWriteLock` 都是可重入锁。
 
-### 4.4 死锁
+### 4.4 自旋锁
+
+> 用循环取代阻塞，减少线程上下文切换，缺点是循环耗费 CPU。
+
+```java
+int var;
+do {
+    var = get();
+} while (!this.cas(obj, var, newVal));
+```
+
+### 4.5 读写锁
+
+`ReentrantReadWriteLock`
+
+- 读 - 读 共享
+- 读 - 写 互斥
+- 写 - 写 互斥
+
+### 4.6 死锁
 
 死锁：两个或两个以上的线程在执行过程中，同时取争夺对方的资源形成循环造成的一直等待。
 
@@ -548,29 +573,36 @@ System.out.println("人都走完了，班长该锁门了。");
 与 `CountDownLatch` 类似，初始化设置一个目标信号量，每次 `await` 时信号量将**加一**并等待，当达到目标信号量时，所有等待的线程都将被唤醒。
 
 ```java
+// CyclicBarrier 执行完回调后，会自动重置计数器
 CyclicBarrier cyclicBarrier = new CyclicBarrier(7, () -> {
     System.out.println("召~唤$神%龙！！！！！！");
 });
 
 for (int i = 0; i < 7; i++) {
     new Thread(() -> {
-        try {
-            TimeUnit.SECONDS.sleep(new Random().nextInt(5));
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        // 循环利用
+        while (true) {
+            try {
+                TimeUnit.SECONDS.sleep(new Random().nextInt(5));
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
 
-        System.out.println(Thread.currentThread().getName().split("-")[1] + " 星龙珠找到了！");
-        try {
-            cyclicBarrier.await();
-        } catch (InterruptedException | BrokenBarrierException e) {
-            System.out.println("不等待召唤神龙了。。。");
-            throw new RuntimeException(e);
+            System.out.println(Thread.currentThread().getName().split("-")[1] + " 星龙珠找到了！");
+            try {
+                cyclicBarrier.await();
+            } catch (InterruptedException | BrokenBarrierException e) {
+                System.out.println("不等待召唤神龙了。。。");
+                throw new RuntimeException(e);
+            }
+            System.out.println(Thread.currentThread().getName().split("-")[1] + " 星龙珠又消失了^~");
         }
-        System.out.println(Thread.currentThread().getName().split("-")[1] + " 星龙珠又消失了^~");
     }, "thread-0" + i).start();
 }
 ```
+
+- `CyclicBarrier` 执行完回调后，会自动重置计数器
+- 循环利用
 
 ### 5.3 小总结
 
@@ -743,7 +775,7 @@ for (int i = 0; i < 7; i++) {
 
 初始化设置一个许可集大小，每次 `acquire` 申请一个许可集（可一次性申请多个），如果没有则阻塞等待；每次 `release` 释放一个许可集（可一次性释放多个）。
 
-通常用于限制可以访问某些资源（物理或逻辑）的线程数目。
+**通常用于限制可以访问某些资源（物理或逻辑）的线程数目。**
 
 ```java
  // 三个许可证
