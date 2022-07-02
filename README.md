@@ -428,6 +428,17 @@ interface Lock
 
 非同一个对象时的效果（非同一把锁）
 
+#### 4.1.1 synchronized 与 Lock
+
+1. 一个是关键字、一个是具体的类（`java.util.concurrent.locks.`）
+2. 一个自动加锁释放锁，一个需要手动操作（最好 `lock -> try -> finally -> unlock`）
+3. `synchronized` 底层使用 monitor 对象来完成，`wait/notify` 方法也依赖于 monitor 对象，**只有在同步方法中才能调用 `awit/notify` 方法**
+4. `synchronized` 加锁一次 monitorenter 会自动退出两次 monitorexit，保证异常情况也会退出
+5. `synchronized` 不支持中断，`Lock` 的 `lockInterruptibly` 支持中断
+6. `Lock` 支持锁超时
+7. `Lock` 可配置公平锁
+8. `Lock` 可自定义多个 `Condition`，用于**精确、分组唤醒**
+
 ### 4.2 公平锁、非公平锁
 
 > 公平锁按照申请锁的顺序来获取锁。
@@ -1078,15 +1089,15 @@ interface BlockingQueue<E>
 
   ![image-20220428192830646](images/image-20220428192830646.png)
 
-##### 7.1.5.1 ArrayBlockingQueue
+##### 7.1.5.1 ==ArrayBlockingQueue==
 
 > 由数组结构组成的**==有界==**阻塞队列。
 
-基于数组的阻塞队列实现，在 `ArrayBlockingQueue` 内部，维护了一个定长数组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数 组外，`ArrayBlockingQueue` 内部还保存着两个整形变量，分别标识着队列的 头部和尾部在数组中的位置。
+基于数组的阻塞队列实现，在 `ArrayBlockingQueue` 内部，维护了一个定长数组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数组外，`ArrayBlockingQueue` 内部还保存着两个整形变量，分别标识着队列的头部和尾部在数组中的位置。
 
-**==`ArrayBlockingQueue` 在生产者放入数据和消费者获取数据，都是共用同一个 锁对象，由此也意味着两者无法真正并行运行==**，这点尤其不同于 `LinkedBlockingQueue`；按照实现原理来分析，`ArrayBlockingQueue` 完全可以采用分离锁，从而实现生产者和消费者操作的完全并行运行。Doug Lea 之 所以没这样去做，也许是因为 `ArrayBlockingQueue` 的数据写入和获取操作已经足够轻巧，以至于引入独立的锁机制，除了给代码带来额外的复杂性外，其 在性能上完全占不到任何便宜。 
+**==`ArrayBlockingQueue` 在生产者放入数据和消费者获取数据，都是共用同一个锁对象，由此也意味着两者无法真正并行运行==**，这点尤其不同于 `LinkedBlockingQueue`；按照实现原理来分析，`ArrayBlockingQueue` 完全可以采用分离锁，从而实现生产者和消费者操作的完全并行运行。Doug Lea 之所以没这样去做，也许是因为 `ArrayBlockingQueue` 的数据写入和获取操作已经足够轻巧，以至于引入独立的锁机制，除了给代码带来额外的复杂性外，其在性能上完全占不到任何便宜。 
 
-##### 7.1.5.2 LinkedBlockingQueue 
+##### 7.1.5.2 ==LinkedBlockingQueue==
 
 >  由链表结构组成的**==有界（但大小默认值为 integer.MAX_VALUE）==**阻塞队列。
 
@@ -1106,7 +1117,7 @@ interface BlockingQueue<E>
 
 在实现 `PriorityBlockingQueue` 时，内部控制线程同步的锁采用的是公平锁。
 
-##### 7.1.5.5 SynchronousQueue
+##### 7.1.5.5 ==SynchronousQueue==
 
 > 不存储元素的阻塞队列，也即单个元素的队列。
 
