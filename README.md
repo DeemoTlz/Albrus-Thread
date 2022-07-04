@@ -1509,6 +1509,190 @@ private static final AtomicReference<Integer> atomicReference = new AtomicRefere
 
 ![image-20220428195520381](images/image-20220428195520381.png)
 
+**线程池源码：**
+
+```java
+public void execute(Runnable command) {
+    if (command == null)
+        throw new NullPointerException();
+    /*
+     * Proceed in 3 steps:
+     *
+     * 1. If fewer than corePoolSize threads are running, try to
+     * start a new thread with the given command as its first
+     * task.  The call to addWorker atomically checks runState and
+     * workerCount, and so prevents false alarms that would add
+     * threads when it shouldn't, by returning false.
+     *
+     * 2. If a task can be successfully queued, then we still need
+     * to double-check whether we should have added a thread
+     * (because existing ones died since last checking) or that
+     * the pool shut down since entry into this method. So we
+     * recheck state and if necessary roll back the enqueuing if
+     * stopped, or start a new thread if there are none.
+     *
+     * 3. If we cannot queue task, then we try to add a new
+     * thread.  If it fails, we know we are shut down or saturated
+     * and so reject the task.
+     */
+    int c = ctl.get();
+    if (workerCountOf(c) < corePoolSize) {
+        if (addWorker(command, true))
+            return;
+        c = ctl.get();
+    }
+    if (isRunning(c) && workQueue.offer(command)) {
+        int recheck = ctl.get();
+        if (! isRunning(recheck) && remove(command))
+            reject(command);
+        else if (workerCountOf(recheck) == 0)
+            addWorker(null, false);
+    }
+    else if (!addWorker(command, false))
+        reject(command);
+}
+```
+
+![image-20220704205511368](images/image-20220704205511368.png)
+
+**线程池中的线程：**
+
+```java
+/**
+ * Class Worker mainly maintains interrupt control state for
+ * threads running tasks, along with other minor bookkeeping.
+ * This class opportunistically extends AbstractQueuedSynchronizer
+ * to simplify acquiring and releasing a lock surrounding each
+ * task execution.  This protects against interrupts that are
+ * intended to wake up a worker thread waiting for a task from
+ * instead interrupting a task being run.  We implement a simple
+ * non-reentrant mutual exclusion lock rather than use
+ * ReentrantLock because we do not want worker tasks to be able to
+ * reacquire the lock when they invoke pool control methods like
+ * setCorePoolSize.  Additionally, to suppress interrupts until
+ * the thread actually starts running tasks, we initialize lock
+ * state to a negative value, and clear it upon start (in
+ * runWorker).
+ */
+private final class Worker
+    extends AbstractQueuedSynchronizer
+    implements Runnable
+{
+    /**
+     * This class will never be serialized, but we provide a
+     * serialVersionUID to suppress a javac warning.
+     */
+    private static final long serialVersionUID = 6138294804551838833L;
+
+    /** Thread this worker is running in.  Null if factory fails. */
+    final Thread thread;
+    /** Initial task to run.  Possibly null. */
+    Runnable firstTask;
+    /** Per-thread task counter */
+    volatile long completedTasks;
+
+    /**
+     * Creates with given first task and thread from ThreadFactory.
+     * @param firstTask the first task (null if none)
+     */
+    Worker(Runnable firstTask) {
+        setState(-1); // inhibit interrupts until runWorker
+        this.firstTask = firstTask;
+        this.thread = getThreadFactory().newThread(this);
+    }
+
+    /** Delegates main run loop to outer runWorker  */
+    public void run() {
+        runWorker(this);
+    }
+
+    // ...
+}
+```
+
+**线程超时死亡：**
+
+```java
+final void runWorker(Worker w) {
+    Thread wt = Thread.currentThread();
+    Runnable task = w.firstTask;
+    w.firstTask = null;
+    w.unlock(); // allow interrupts
+    boolean completedAbruptly = true;
+    try {
+        // 获取任务
+        while (task != null || (task = getTask()) != null) {
+            w.lock();
+            // If pool is stopping, ensure thread is interrupted;
+            // if not, ensure thread is not interrupted.  This
+            // requires a recheck in second case to deal with
+            // shutdownNow race while clearing interrupt
+            if ((runStateAtLeast(ctl.get(), STOP) ||
+                 (Thread.interrupted() &&
+                  runStateAtLeast(ctl.get(), STOP))) &&
+                !wt.isInterrupted())
+                wt.interrupt();
+            try {
+                beforeExecute(wt, task);
+                Throwable thrown = null;
+                try {
+                    task.run();
+                } catch {}
+            } finally {
+                task = null;
+                w.completedTasks++;
+                w.unlock();
+            }
+        }
+        completedAbruptly = false;
+    } finally {
+        processWorkerExit(w, completedAbruptly);
+    }
+}
+
+private Runnable getTask() {
+    boolean timedOut = false; // Did the last poll() time out?
+
+    for (;;) {
+        int c = ctl.get();
+        int rs = runStateOf(c);
+
+        // Check if queue empty only if necessary.
+        if (rs >= SHUTDOWN && (rs >= STOP || workQueue.isEmpty())) {
+            decrementWorkerCount();
+            return null;
+        }
+
+        int wc = workerCountOf(c);
+
+        // Are workers subject to culling?
+        boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;
+
+        if ((wc > maximumPoolSize || (timed && timedOut))
+            && (wc > 1 || workQueue.isEmpty())) {
+            if (compareAndDecrementWorkerCount(c))
+                return null;
+            continue;
+        }
+
+        try {
+            // 获取任务最长等待时间便是线程超时时间
+            Runnable r = timed ?
+                workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
+            workQueue.take();
+            if (r != null)
+                return r;
+            timedOut = true;
+        } catch (InterruptedException retry) {
+            timedOut = false;
+        }
+    }
+}
+```
+
+- **获取任务最长等待时间便是线程超时时间**
+- 线程 `run()` 中是循环获取任务来执行，获取不到任务（返回 NULL）便结束循环，那就便是结束自己：`processWorkerExit(w, completedAbruptly);`
+
 ###  8.1 newFixedThreadPool
 
 线程数量固定的线程池。如果因为在关闭前的执行期间出现异常导致线程终止，如果需要，一个新线程将代理它执行后续的任务。
@@ -1606,28 +1790,28 @@ public static ExecutorService newWorkStealingPool() {
 - handler：用于处理工作线程未处理的异常，默认为 null
 - asyncMode：用于控制 WorkQueue 的工作模式：队列---反队列
 
-### 8.6 七个参数
+### 8.6 七个参数 - ThreadPoolExecutor
 
-1. 核心线程数量 - 正式工
+1. `corePoolSize`：核心线程数量 - 正式工
 
-2. 最大线程数量 - 包含临时工的最大数
+2. `maximumPoolSize`：最大线程数量 - 包含临时工的最大数
 
    **==什么时候创建临时工？==**
 
-   1. 如果正在运行的线程数量小于 corePoolSize，那么马上创建线程运行这个任务
-   2. 如果正在运行的线程数量大于或等于 corePoolSize，那么将这个任务放入队列
-   3. 如果这个时候队列满了且正在运行的线程数量还小于 maximumPoolSize，那么创建非核心线程立刻运行这个任务
-   4. 如果队列满了且正在运行的线程数量大于或等于 maximumPoolSize，那么线程池会启动饱和拒绝策略来执行
+   1. 如果正在运行的线程数量小于 `corePoolSize`，那么马上创建线程运行这个任务
+   2. 如果正在运行的线程数量大于或等于 `corePoolSize`，那么将这个任务放入队列
+   3. 如果这个时候队列满了且正在运行的线程数量还小于 `maximumPoolSize`，那么创建非核心线程立刻运行这个任务
+   4. 如果队列满了且正在运行的线程数量大于或等于 `maximumPoolSize`，那么线程池会启动饱和拒绝策略来执行
 
-3. 空闲线程存活时间 - 临时工最大空闲时间
+3. `keepAliveTime`：空闲线程存活时间 - 临时工最大空闲时间
 
-4. 存活时间单位
+4. `unit`：存活时间单位
 
-5. workQueue - 存放提交但未执行的任务
+5. `workQueue` - 存放提交但未执行的任务
 
-6. 线程创建工厂 - 创建线程（可省略）
+6. `threadFactory`：线程创建工厂 - 创建线程（可省略）
 
-7. handler - 等待队列满后的拒绝策略（可省略）
+7. `handler` - 等待队列满后的拒绝策略（可省略）
 
 ### 8.7 拒绝策略
 
@@ -1700,9 +1884,24 @@ public static ExecutorService newWorkStealingPool() {
 
 因此建议自定义线程池![image-20220428205438804](images/image-20220428205438804.png)
 
+### 8.9 线程池状态
+
+
+
+### 8.10 线程池线程数
+
+- CPU 密集型：CPU 核数 + 1
+
+- IO 密集型：
+
+  时间被浪费在 IO 阻塞，多线程下利用被阻塞的时间。
+
+  - 并不是一直在执行任务，尽可能配置多的线程，CPU 核数 * 2
+  - CPU 核数 / 1 - 阻塞系数（0.8~0.9）
+
 ## 九、Future
 
-### 11.1 Future
+### 9.1 Future
 
 `Future` 接口有 5 个方法：
 
@@ -1721,7 +1920,7 @@ get(long timeout, TimeUnit unit);
 
 - 两个 `get()` 方法都是阻塞式
 
-线程池使用 `execute(Runnable)` 提交任务，但是**无法获取任务的执行结果**，线程池提供了其他接口来获取任务的执行结果：
+**线程池**使用 `execute(Runnable)` 提交任务，但是**无法获取任务的执行结果**，线程池提供了其他接口来获取任务的执行结果：
 
 ```java
 // 提交 Runnable 任务
@@ -1746,7 +1945,7 @@ Future<?> submit(Runnable task);
 
    这个方法提供了两个参数，一个是不带返回结果的 `Runnable` 接口，另一个就是用于主线程与子线程沟通的桥梁 `T result`，通过 `Future.get()` 获取到的返回值便是传递给 `submit()` 方法的参数 `T result`，这样便得以使主线程通过它来与子线程共享数据
 
-### 11.2 FutureTask
+### 9.2 FutureTask
 
 ==**相比 `Runnable`，`Callable` 接口可以拥有返回值！**==
 
@@ -1773,7 +1972,127 @@ public void test() throws ExecutionException, InterruptedException {
 }
 ```
 
-### 11.3 泡茶（一）
+#### 9.2.1 Callable
+
+```java
+public class FutureTask<V> implements RunnableFuture<V> {
+    /*
+     * Revision notes: This differs from previous versions of this
+     * class that relied on AbstractQueuedSynchronizer, mainly to
+     * avoid surprising users about retaining interrupt status during
+     * cancellation races. Sync control in the current design relies
+     * on a "state" field updated via CAS to track completion, along
+     * with a simple Treiber stack to hold waiting threads.
+     *
+     * Style note: As usual, we bypass overhead of using
+     * AtomicXFieldUpdaters and instead directly use Unsafe intrinsics.
+     */
+
+    /**
+     * The run state of this task, initially NEW.  The run state
+     * transitions to a terminal state only in methods set,
+     * setException, and cancel.  During completion, state may take on
+     * transient values of COMPLETING (while outcome is being set) or
+     * INTERRUPTING (only while interrupting the runner to satisfy a
+     * cancel(true)). Transitions from these intermediate to final
+     * states use cheaper ordered/lazy writes because values are unique
+     * and cannot be further modified.
+     *
+     * Possible state transitions:
+     * NEW -> COMPLETING -> NORMAL
+     * NEW -> COMPLETING -> EXCEPTIONAL
+     * NEW -> CANCELLED
+     * NEW -> INTERRUPTING -> INTERRUPTED
+     */
+    private volatile int state;
+    private static final int NEW          = 0;
+    private static final int COMPLETING   = 1;
+    private static final int NORMAL       = 2;
+    private static final int EXCEPTIONAL  = 3;
+    private static final int CANCELLED    = 4;
+    private static final int INTERRUPTING = 5;
+    private static final int INTERRUPTED  = 6;
+
+    /** The underlying callable; nulled out after running */
+    private Callable<V> callable;
+    /** The result to return or exception to throw from get() */
+    private Object outcome; // non-volatile, protected by state reads/writes
+    /** The thread running the callable; CASed during run() */
+    private volatile Thread runner;
+    /** Treiber stack of waiting threads */
+    private volatile WaitNode waiters;
+    
+    /**
+     * @throws CancellationException {@inheritDoc}
+     */
+    public V get() throws InterruptedException, ExecutionException {
+        int s = state;
+        if (s <= COMPLETING)
+            s = awaitDone(false, 0L);
+        return report(s);
+    }
+
+    /**
+     * Returns result or throws exception for completed task.
+     *
+     * @param s completed state value
+     */
+    @SuppressWarnings("unchecked")
+    private V report(int s) throws ExecutionException {
+        Object x = outcome;
+        if (s == NORMAL)
+            return (V)x;
+        if (s >= CANCELLED)
+            throw new CancellationException();
+        throw new ExecutionException((Throwable)x);
+    }
+    
+        /**
+     * Sets the result of this future to the given value unless
+     * this future has already been set or has been cancelled.
+     *
+     * <p>This method is invoked internally by the {@link #run} method
+     * upon successful completion of the computation.
+     *
+     * @param v the value
+     */
+    protected void set(V v) {
+        if (UNSAFE.compareAndSwapInt(this, stateOffset, NEW, COMPLETING)) {
+            outcome = v;
+            UNSAFE.putOrderedInt(this, stateOffset, NORMAL); // final state
+            finishCompletion();
+        }
+    }
+    
+    // ...
+    
+}
+```
+
+- `get()` 会自动**循环等待**，所以**肯定建议最后再调用**
+- `set()` 设置返回值**没有**采取 `while` 的方式，而是 `if`，是==因为在同一个 `FutureTask` 只需要成功设置（计算）一次即可==
+- `report()` 根据状态决定抛出异常还是返回结果
+
+#### 9.2.2 Callable & Runnable
+
+**为什么 JDK 没有直接修改 `Thread` 类进行对其进行扩展接收 `Callable` 接口？**
+
+1. ==良好的分工，面向接口编程==，`Thread` 是线程类，负责执行任务
+
+2. `Thread` **分工明确、单一职责**，接收任务负责执行即可 -> 对任务进行分类：不带返回值 & 带返回值
+
+3. `Thread` Since: JDK 1.0，元老级别，不建议修改 -> 扩展任务 -> 接口传递性
+
+   ```java
+   FutureTask<V> implements RunnableFuture<V>
+       ->  extends Runnable, Future<V>
+   ```
+
+4. 将不同种类的任务实现逻辑划分到各自的任务类中去维护，解耦合
+
+   觉得奇怪的其实是：对 `Runnable` 进行扩展。
+
+### 9.3 泡茶（一）
 
 > 实现泡茶程序：==**分工、同步和互斥**==![image-20220502085911479](images/image-20220502085911479.png)
 
@@ -1846,7 +2165,7 @@ T1: 泡茶...
 上茶: 龙井
 ```
 
-### 11.4 CompletableFuture
+### 9.4 CompletableFuture
 
 > ==**建议根据不同的业务创建不同的线程池，避免互相干扰**==
 >
@@ -1869,7 +2188,7 @@ static <U> CompletableFuture<U> supplyAsync(Supplier<U> supplier, Executor execu
 - 默认情况下 `CompletableFuture` 会使用公共的 `ForkJoinPool` 线程池，这个线程池默认创建的线程数是 CPU 的核数（也可以通过 ` JVM option:- Djava.util.concurrent.ForkJoinPool.common.parallelism` 来设置线程数）
 - 如果所有的 `CompletableFuture` 都共享一个线程池，那么一旦有线程执行一些很慢的 I/O 操作，就会导致线程池中的其他任务被阻塞执行造成**线程饥饿**，进而影响整个系统的性能。==**因此，建议根据不同的业务创建不同的线程池，避免互相干扰**==
 
-### 11.5 泡茶（二）
+### 9.5 泡茶（二）
 
 ```java
 // 任务一
@@ -1907,7 +2226,7 @@ CompletableFuture<String> cf3 = cf1.thenCombine(cf2, (__, name) -> {
 System.out.println(cf3.get());
 ```
 
-### 11.6 CompletableFuture 之 CompletionStage
+### 9.6 CompletableFuture 之 CompletionStage
 
 > `CompletableFuture` 类还实现了 `CompletionStage` 接口，在 1.8 版本提供了40个方法！！如何理解？
 
@@ -1917,7 +2236,7 @@ System.out.println(cf3.get());
 
 在编程领域，还有一个绕不开的山头，那就是==**异常处理**==，`CompletionStage` 接口也能优雅地描述异常处理。
 
-#### 11.6.1 串行关系
+#### 9.6.1 串行关系
 
 > `CompletionStage` 接口里描述串行关系主要是：`thenApply`、`thenAccept`、`thenRun` 和 `thenCompose` 这四个系列的接口。
 
@@ -1954,7 +2273,7 @@ CompletionStage<R> thenCompose(fn);
 CompletionStage<R> thenComposeAsync(fn);
 ```
 
-#### 11.6.2 AND 汇聚
+#### 9.6.2 AND 汇聚
 
 > `CompletionStage` 接口里描述 AND 汇聚关系，主要是 `thenCombine`、`thenAcceptBoth`和 `runAfterBoth` 系列接口，这些接口的区别也是源自 `fn`、`consume` 和 `action` 这三个核心参数不同。
 
@@ -1967,7 +2286,7 @@ CompletionStage<Void> runAfterBoth(other, action);
 CompletionStage<Void> runAfterBothAsync(other, action);
 ```
 
-#### 11.6.3 OR 汇聚
+#### 9.6.3 OR 汇聚
 
 > `CompletionStage` 接口里描述 AND 汇聚关系，主要是 `applyToEither`、`acceptEither`和 `runAfterEither` 系列接口，这些接口的区别也是源自 `fn`、`consume` 和 `action` 这三个核心参数不同。
 
@@ -1998,7 +2317,7 @@ CompletableFuture<String> f3 = f1.applyToEither(f2, s -> s);
 System.out.println(f3.join());
 ```
 
-#### 11.6.4 异常处理
+#### 9.6.4 异常处理
 
 虽然上面提到的 `fn`、`consume` 和 `action` 它们的核心方法都**不允许抛出可检查异常，但不能限制它们抛出运行时异常**。非异步编程使用 `try-catch-finally` 来捕获处理异常，那么在异步编程里面，异常如何处理？
 
@@ -2025,7 +2344,7 @@ CompletionStage<R> handleAsync(fn);
 
 - `whenComplete()` 和 `handle()` 系列方法就类似于 `finally() {}`，无论是否发生异常都会执行
 
-### 11.7 CompletionService
+### 9.7 CompletionService
 
 > **`CompletionService` 可以优雅地批量提交异步任务，内部维护了一个阻塞队列，当任务执行结束就把任务的执行结果加入到阻塞队列中。**注意，是将 ==**`Future<V>` 对象**==加入到队列中。
 
