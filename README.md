@@ -1886,7 +1886,66 @@ public static ExecutorService newWorkStealingPool() {
 
 ### 8.9 线程池状态
 
+#### 8.9.1  线程池状态
 
+```java
+private static final int COUNT_BITS = Integer.SIZE - 3;
+private static final int CAPACITY   = (1 << COUNT_BITS) - 1;
+
+// runState is stored in the high-order bits
+private static final int RUNNING    = -1 << COUNT_BITS;
+private static final int SHUTDOWN   =  0 << COUNT_BITS;
+private static final int STOP       =  1 << COUNT_BITS;
+private static final int TIDYING    =  2 << COUNT_BITS;
+private static final int TERMINATED =  3 << COUNT_BITS;
+```
+
+- RUNNING
+  线程池被创建就处于 RUNNING 状态，任务数为 0。**能够接收新任务、对已排队的任务进行处理。**
+- SHUTDOWN
+  **不接收新任务，但能处理已排队的任务。**调用 `shutdown()` 方法将线程池由 RUNNING 转变为 SHUTDOWN。
+- STOP
+  **不接收新任务，不处理已排队的任务，并且会中断当前正在执行的任务。**调用 `shutdownNow()` 方法将线程池由 RUNNING/SHUTDOWN 转变为 STOP。
+- TIDYING（整理）
+  - SHUTDOWN 状态下，任务数为 0 线程数为 0 时会转变为 TIDYING 状态
+  - STOP 状态下，线程数为 0 时会转变为 TIDYING 状态
+- TERMINATED
+  线程池彻底终止。TIDYING 状态下调用 `terminated()` 方法结束后转变为 TERMINATED。
+
+#### 8.9.2 状态转变
+
+```java
+* The runState provides the main lifecycle control, taking on values:
+*
+*   RUNNING:  Accept new tasks and process queued tasks
+*   SHUTDOWN: Don't accept new tasks, but process queued tasks
+*   STOP:     Don't accept new tasks, don't process queued tasks,
+*             and interrupt in-progress tasks
+*   TIDYING:  All tasks have terminated, workerCount is zero,
+*             the thread transitioning to state TIDYING
+*             will run the terminated() hook method
+*   TERMINATED: terminated() has completed
+*
+* The numerical order among these values matters, to allow
+* ordered comparisons. The runState monotonically increases over
+* time, but need not hit each state. The transitions are:
+*
+* RUNNING -> SHUTDOWN
+*    On invocation of shutdown(), perhaps implicitly in finalize()
+* (RUNNING or SHUTDOWN) -> STOP
+*    On invocation of shutdownNow()
+* SHUTDOWN -> TIDYING
+*    When both queue and pool are empty
+* STOP -> TIDYING
+*    When pool is empty
+* TIDYING -> TERMINATED
+*    When the terminated() hook method has completed
+*
+* Threads waiting in awaitTermination() will return when the
+* state reaches TERMINATED.
+```
+
+![在这里插入图片描述](images/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBA5LuZ5YeM6ZiB,size_20,color_FFFFFF,t_70,g_se,x_16.png)
 
 ### 8.10 线程池线程数
 
